@@ -43,13 +43,15 @@ def train(g, node_batches, model, labels, train_mask, val_mask=[], test_mask=[],
     best_test_acc = 0
 
     # extract node and edge features from graph object
-    features = g.ndata["feats"]
-    
+    features = g.ndata["feat"]
     # compute class weights
-    class_weights = class_weight.compute_class_weight(class_weight='balanced', classes=np.unique(labels), y=labels[train_mask].numpy())
-    class_weights = torch.tensor(class_weights, dtype=torch.double) # class_weights=torch.tensor(class_weights, dtype=torch.double)
-    class_weights_multiplier = torch.tensor([1, 1])
-    class_weights_weighted = class_weights * class_weights_multiplier
+    class_weights_weighted = torch.tensor([1, 1])
+    # kept out for now because compute_class_weights seems to be behaving funny
+    if (False):
+        class_weights = class_weight.compute_class_weight(class_weight='balanced', classes=np.unique(labels), y=labels[train_mask].numpy())
+        class_weights = torch.tensor(class_weights, dtype=torch.double) # class_weights=torch.tensor(class_weights, dtype=torch.double)
+        class_weights_multiplier = torch.tensor([1, 1])
+        class_weights_weighted = class_weights * class_weights_multiplier
     
     prev_val_loss = 0
     bad_epoch_cnt = 0
@@ -66,7 +68,9 @@ def train(g, node_batches, model, labels, train_mask, val_mask=[], test_mask=[],
 
         # Compute loss
         # Note that you should only compute the losses of the nodes in the current training set batch. <- don't worry about this note
-        loss = F.cross_entropy(logits[train_mask], labels[train_mask], weight=class_weights_weighted)
+        print(class_weights_weighted.float())
+        print(labels[train_mask].reshape(-1).long().shape)
+        loss = F.cross_entropy(input=logits[train_mask], target=labels[train_mask].reshape(-1).long(), weight=class_weights_weighted.float())
         
         optimizer.zero_grad()
         loss.backward()
@@ -74,7 +78,7 @@ def train(g, node_batches, model, labels, train_mask, val_mask=[], test_mask=[],
         optimizer.step()
 
         # Compute accuracy on entire training/validation/test
-        train_loss = F.cross_entropy(logits[train_mask], labels[train_mask], weight=class_weights_weighted)
+        train_loss = F.cross_entropy(logits[train_mask], labels[train_mask].reshape(-1).long(), weight=class_weights_weighted.float())
         train_acc = (pred[train_mask] == labels[train_mask]).float().mean()
         train_bal_acc = metrics.balanced_accuracy_score(labels[train_mask], pred[train_mask])
         train_recall = metrics.recall_score(labels[train_mask], pred[train_mask])
@@ -87,7 +91,7 @@ def train(g, node_batches, model, labels, train_mask, val_mask=[], test_mask=[],
             bal_acc = metrics.balanced_accuracy_score(labels[val_mask], pred[val_mask])
             val_recall = metrics.recall_score(labels[val_mask], pred[val_mask])
             val_precision = metrics.precision_score(labels[val_mask], pred[val_mask], zero_division=0)
-            val_loss = F.cross_entropy(logits[val_mask], labels[val_mask], weight=class_weights_weighted)
+            val_loss = F.cross_entropy(logits[val_mask], labels[val_mask].reshape(-1).long(), weight=class_weights_weighted.float())
 
             # early stopping, we will not worry about this for now
             if e == 0:
@@ -107,7 +111,7 @@ def train(g, node_batches, model, labels, train_mask, val_mask=[], test_mask=[],
             test_bal_acc = metrics.balanced_accuracy_score(labels[test_mask], pred[test_mask])
             test_recall = metrics.recall_score(labels[test_mask], pred[test_mask])
             test_precision = metrics.precision_score(labels[test_mask], pred[test_mask], zero_division=0)
-            test_loss = F.cross_entropy(logits[test_mask], labels[test_mask], weight=class_weights_weighted)
+            test_loss = F.cross_entropy(logits[test_mask], labels[test_mask].reshape(-1).long(), weight=class_weights_weighted.reshape(-1).float())
 
         # Save the best validation accuracy and the corresponding test accuracy.
         if validate and best_val_acc < val_acc:

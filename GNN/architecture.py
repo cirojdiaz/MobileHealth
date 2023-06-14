@@ -7,6 +7,7 @@ import torch.nn.functional as F
 import dgl
 import dgl.data
 import dgl.function as fn
+import numpy as np
 
 class GCNLAYER(nn.Module):
     def __init__(self, node_dims, msg_dim, output_dims):
@@ -30,9 +31,9 @@ class GCNLAYER(nn.Module):
         self.dropout = nn.Dropout(0.2)
 
         # initialize weight matrices
-        nn.init.xavier_normal_(self.W_apply_2.weight)
-        nn.init.xavier_normal_(self.W_apply.weight)
-        nn.init.xavier_normal_(self.W_msg.weight)
+        nn.init.xavier_normal_(self.W_combine_neighbours_1.weight)
+        nn.init.xavier_normal_(self.W_combine_neighbours_2.weight)
+        nn.init.xavier_normal_(self.W_msg_1.weight)
         nn.init.xavier_normal_(self.W_msg_2.weight)
         nn.init.xavier_normal_(self.W_msg_3.weight)
         nn.init.xavier_normal_(self.W_att_1.weight)
@@ -41,7 +42,7 @@ class GCNLAYER(nn.Module):
 
     # define message generation function
     def message_func(self, edges):
-        return {'m': edges.data['avg_a'] * F.relu(self.W_msg_3(F.relu(self.W_msg_2(F.relu(self.W_msg_1(torch.cat(edges.src['h'])))))))}
+        return {'m': edges.data['avg_a'] * F.relu(self.W_msg_3(F.relu(self.W_msg_2(F.relu(self.W_msg_1(edges.src['h']))))))}
     
     #define attention calculation functions
     def att_func_1(self, edges):
@@ -92,9 +93,10 @@ class AvgPoolingLayer(nn.Module):
 
     # define pooling proccess - average all rows that belong to the same "batch" (i.e the same patient)
     def forward(self, feats, node_batches):  
-        pooled_vals = list()
+        print(feats.shape)
+        pooled_vals = torch.empty(0, feats.shape[1])
         for batch in node_batches:
-            pooled_vals.append(torch.mean(feats[batch], dim=0))
+            pooled_vals = torch.cat([pooled_vals, torch.mean(feats[batch], dim=0).reshape(1, -1)], dim=0)
         return torch.tensor(pooled_vals)
 
 # define model
@@ -117,16 +119,16 @@ class GCN(nn.Module):
         # pass input features through graph layers
         h = self.conv_1(g, node_feats)
         h = F.relu(h)
-        h = self.conv2(g, h)
+        h = self.conv_2(g, h)
         h = F.relu(h)
 
         # pool rows belonging to same patient to get patient embeddings
         h = self.avg_pool(h, node_batches)
 
         # pass patient embeddings through dense layers
-        h = self.dense_1(g, h)
+        h = self.dense_1(h)
         h = F.relu(h)
-        h = self.dense_2(g, h)
+        h = self.dense_2(h)
         h = F.relu(h)
 
         # apply activation function and return logits (predictions)
