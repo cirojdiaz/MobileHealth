@@ -30,6 +30,10 @@ class GCNLAYER(nn.Module):
         # create dropout layer 
         self.dropout = nn.Dropout(0.2)
 
+        # layer normalization across feature dimension
+        self.layer_norm = nn.LayerNorm(node_dims)
+
+        '''
         # initialize weight matrices
         nn.init.xavier_normal_(self.W_combine_neighbours_1.weight)
         nn.init.xavier_normal_(self.W_combine_neighbours_2.weight)
@@ -39,6 +43,27 @@ class GCNLAYER(nn.Module):
         nn.init.xavier_normal_(self.W_att_1.weight)
         nn.init.xavier_normal_(self.W_att_2.weight)
         nn.init.xavier_normal_(self.W_att_3.weight)
+        '''
+
+        # Kaiming He weight matrices, optimal for ReLU activation functions
+        nn.init.kaiming_normal_(self.W_combine_neighbours_1.weight)
+        nn.init.kaiming_normal_(self.W_combine_neighbours_2.weight)
+        nn.init.kaiming_normal_(self.W_msg_1.weight)
+        nn.init.kaiming_normal_(self.W_msg_2.weight)
+        nn.init.kaiming_normal_(self.W_msg_3.weight)
+        nn.init.kaiming_normal_(self.W_att_1.weight)
+        nn.init.kaiming_normal_(self.W_att_2.weight)
+        nn.init.kaiming_normal_(self.W_att_3.weight)       
+
+    '''
+    def print_debug_info(self, tensor, name):
+        """Utility function for printing debug info about a tensor."""
+        print(f"{name}: min={tensor.min()}, max={tensor.max()}")
+        if torch.isnan(tensor).any():
+            print(f"NaNs found in {name}")
+        if (tensor == 0).any():
+            print(f"Zeros found in {name}")
+    '''
 
     # define message generation function
     def message_func(self, edges):
@@ -54,6 +79,15 @@ class GCNLAYER(nn.Module):
     
     # Calculate the average of all three attentions
     def avg_att(self, edges):
+        # Initialize avg_a to zero matrix of same dimensions as a1
+        #avg_a = torch.zeros_like(edges.data['a1'])
+        '''
+        non_zero_mask = (edges.dst['att1'] + edges.dst['att2'] + edges.dst['att3']) != 0
+        avg_a[non_zero_mask] = (edges.data['a1'][non_zero_mask] / (edges.dst['att1'][non_zero_mask]) + 
+                                edges.data['a2'][non_zero_mask] / (edges.dst['att2'][non_zero_mask]) + 
+                                edges.data['a3'][non_zero_mask] / (edges.dst['att3'][non_zero_mask])) / 3
+        return {'avg_a': avg_a}     
+        '''
         return {'avg_a': (edges.data['a1'] / edges.dst['att1'] + edges.data['a2'] / edges.dst['att2'] + edges.data['a3'] / edges.dst['att3']) / 3}
 
     # define forward pass
@@ -61,8 +95,8 @@ class GCNLAYER(nn.Module):
         # so that changes don't remain in graph object
         with g.local_scope():
             
-            # store features (after dropout in graph)
-            g.ndata['h'] = self.dropout(node_features)
+            # store features (after dropout and layer normalization in graph)
+            g.ndata['h'] = self.dropout(self.layer_norm(node_features))
 
             # calculate exponentiated attentions and store in edges
             g.apply_edges(self.att_func_1)
@@ -76,6 +110,11 @@ class GCNLAYER(nn.Module):
 
             # calculate final attentions
             g.apply_edges(self.avg_att)
+
+            # Handle NaN values by replacing them with zeroes 
+            #g.edata['avg_a'] = torch.where(torch.isnan(g.edata['avg_a']), torch.zeros_like(g.edata['avg_a']), g.edata['avg_a'])
+            # Initialize h_neight to a zero matrix of same size of node_features
+            #g.ndata['h_neigh'] = torch.zeros_like(node_features)
 
             # aggregate neighbourhood information
             g.update_all(self.message_func, fn.mean('m', 'h_neigh'))
@@ -93,15 +132,15 @@ class AvgPoolingLayer(nn.Module):
 
     # define pooling proccess - average all rows that belong to the same "batch" (i.e the same patient)
     def forward(self, feats, node_batches):  
-        print(feats.shape)
+        #print(feats.shape)
         pooled_vals = torch.empty(0, feats.shape[1])
         for batch in node_batches:
             pooled_vals = torch.cat([pooled_vals, torch.mean(feats[batch], dim=0).reshape(1, -1)], dim=0)
-        return torch.tensor(pooled_vals)
+        return pooled_vals
 
 # define model
 class GCN(nn.Module):
-    def __init__(self, in_feats, msg_dims, h_feats, num_classes=2):
+    def __init__(self, in_feats, msg_dims, h_feats, num_classes=1):
         super(GCN, self).__init__()
         # create graph layers
         self.conv_1 = GCNLAYER(in_feats, msg_dims, h_feats)
@@ -125,13 +164,16 @@ class GCN(nn.Module):
         # pool rows belonging to same patient to get patient embeddings
         h = self.avg_pool(h, node_batches)
 
+        # Upsample h and corresponding labels for it(Need to differentiate using backprop), use a smote function to create synthetic samples so that it only happens in the train set
+
+
         # pass patient embeddings through dense layers
         h = self.dense_1(h)
         h = F.relu(h)
         h = self.dense_2(h)
-        h = F.relu(h)
-
+        #h = F.relu(h)
+        
         # apply activation function and return logits (predictions)
-        h = F.softmax(h, dim=1)
-
+        #h = F.softmax(h, dim=1)
+        # Since BCEWithLogitsLoss combines a sigmoid layer and BCELoss, no need to add a sigmoid layer in the forward pass
         return h
