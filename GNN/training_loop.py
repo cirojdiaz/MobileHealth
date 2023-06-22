@@ -47,11 +47,12 @@ def train(g, node_batches, model, labels, train_mask, val_mask=[], test_mask=[],
     # compute class weights
     #class_weights_weighted = torch.tensor([1, 1])
     # kept out for now because compute_class_weights seems to be behaving funny
-    if (False):
-        class_weights = class_weight.compute_class_weight(class_weight='balanced', classes=np.unique(labels), y=labels[train_mask].numpy())
-        class_weights = torch.tensor(class_weights, dtype=torch.double) # class_weights=torch.tensor(class_weights, dtype=torch.double)
-        class_weights_multiplier = torch.tensor([1, 1])
-        class_weights_weighted = class_weights * class_weights_multiplier
+    # Computing weights for balancing dataset
+    class_weights = class_weight.compute_class_weight(class_weight='balanced', classes=np.unique(labels), y=labels[train_mask].squeeze().numpy())
+    # Index the weight of the positive class and convert to tensor
+    class_weights = torch.tensor(class_weights[1], dtype=torch.float)  # class_weights=torch.tensor(class_weights, dtype=torch.double)
+    #class_weights_multiplier = torch.tensor([1, 1])
+    #class_weights_weighted = class_weights * class_weights_multiplier
     
     prev_val_loss = 0
     bad_epoch_cnt = 0
@@ -66,9 +67,11 @@ def train(g, node_batches, model, labels, train_mask, val_mask=[], test_mask=[],
     
         #pred = new_logits.argmax(1)
         pred = (torch.sigmoid(logits) > 0.5).float()
-        loss_function = torch.nn.BCEWithLogitsLoss()
+        # Pass class weights through the pos_weight argument to handle class imbalances
+        loss_function = torch.nn.BCEWithLogitsLoss(pos_weight=class_weights)
+
         # Inputs: logits, target:labels
-        loss = loss_function(logits[train_mask].squeeze().float(), labels[train_mask].squeeze().float())
+        loss = loss_function(logits[train_mask].squeeze(), labels[train_mask].squeeze().float())
         # Compute loss
         # Note that you should only compute the losses of the nodes in the current training set batch. <- don't worry about this note
         #print(class_weights_weighted.float())
@@ -96,7 +99,7 @@ def train(g, node_batches, model, labels, train_mask, val_mask=[], test_mask=[],
             val_recall = metrics.recall_score(labels[val_mask], pred[val_mask])
             val_precision = metrics.precision_score(labels[val_mask], pred[val_mask], zero_division=0)
             #val_loss = F.cross_entropy(logits[val_mask], labels[val_mask].reshape(-1).long(), weight=class_weights_weighted.float())
-            val_loss = loss_function(logits[val_mask].squeeze().float(), pred[val_mask].squeeze().float())
+            val_loss = loss_function(logits[val_mask].squeeze().float(), labels[val_mask].squeeze().float())
 
             # early stopping, we will not worry about this for now
             if e == 0:
@@ -117,7 +120,7 @@ def train(g, node_batches, model, labels, train_mask, val_mask=[], test_mask=[],
             test_recall = metrics.recall_score(labels[test_mask], pred[test_mask])
             test_precision = metrics.precision_score(labels[test_mask], pred[test_mask], zero_division=0)
             #test_loss = F.cross_entropy(logits[test_mask], labels[test_mask].reshape(-1).long(), weight=class_weights_weighted.reshape(-1).float())
-            test_loss = loss_function(logits[test_mask].squeeze().float(), pred[test_mask].squeeze().float())
+            test_loss = loss_function(logits[test_mask].squeeze().float(), labels[test_mask].squeeze().float())
         # Save the best validation accuracy and the corresponding test accuracy.
         if validate and best_val_acc < val_acc:
             best_val_acc = val_acc
