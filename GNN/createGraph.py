@@ -21,7 +21,7 @@ def throughData(csv):
     # subjDict[patient] is a list 
     # subjDict[patient][visit] is a pandas series
     
-    keysToExtract = ['DIASBP_R', 'PULSE_R', 'SYSBP_R', 'HEIGHT_R', 'WEIGHT_R', 'CREATININE_R', 'HDL_R', 'LDL_R', 'TOTCHOL_R', 'RDAYSFROMINDEX', 'PostCond']
+    keysToExtract = ['DIASBP_R', 'PULSE_R', 'SYSBP_R', 'CREATININE_R', 'HDL_R', 'LDL_R', 'TOTCHOL_R', 'RDAYSFROMINDEX', 'PostCond']
 
     flag = False # flag to check if there is a nan value
     
