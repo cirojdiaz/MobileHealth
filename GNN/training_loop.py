@@ -4,19 +4,25 @@ os.environ['DGLBACKEND'] = 'pytorch'
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch_optimizer as optim
 import dgl
 import dgl.data
 from sklearn import metrics
 from sklearn.utils import class_weight
 import numpy as np
 import dgl.function as fn
+from torch_optimizer import Lookahead
 from torch.nn import KLDivLoss
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from sklearn.model_selection import StratifiedKFold
 from sklearn.ensemble import RandomForestClassifier
 from imblearn.over_sampling import SMOTE
 from xgboost import XGBClassifier
+from madgrad import MADGRAD
+#from diffdist.functional import diffgrad
+from adamp import AdamP
 
+# Look into optimal ESP 
 def train(g, node_batches, model, labels, train_mask, val_mask=[], test_mask=[], validate=True, test=False, init_lr=0.01, stoch=True, num_batches=20, early_stopping=True, early_stopping_patience=10, early_stopping_warmup=0, max_epochs=4950):
     # ensure that validation and/or test masks contain at least 1 node if validation and/or testing is enabled
     if test and len(test_mask) == 0:
@@ -35,7 +41,11 @@ def train(g, node_batches, model, labels, train_mask, val_mask=[], test_mask=[],
     test_mask = np.array(test_mask)
     
     # create optimizer and scheduler
-    optimizer = torch.optim.Adam(model.parameters(), lr=init_lr,weight_decay=0.0001)
+    #optimizer = torch.optim.Adam(model.parameters(), lr=init_lr,weight_decay=0.0001)
+    optimizer = AdamP(model.parameters(), lr=1e-3)
+
+    # Wrapper optimizer to
+    optimizer = Lookahead(optimizer, k=5, alpha=0.5)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=15, verbose=True)
 
     # set best scores
@@ -77,11 +87,13 @@ def train(g, node_batches, model, labels, train_mask, val_mask=[], test_mask=[],
         #print(class_weights_weighted.float())
         #print(labels[train_mask].reshape(-1).long().shape)
         #loss = F.cross_entropy(input=logits[train_mask], target=labels[train_mask].reshape(-1).long(), weight=class_weights_weighted.float())
-        
+        # Look into this, check alternatives 
+        # Clear gradients of optimized variables before backward pass
         optimizer.zero_grad()
         loss.backward()
         # scheduler.step(F.cross_entropy(logits[train_mask], labels[train_mask], weight=class_weights_weighted))
         optimizer.step()
+
 
         # Compute accuracy on entire training/validation/test
         train_loss = loss_function(logits[train_mask].squeeze().float(), labels[train_mask].squeeze().float())
