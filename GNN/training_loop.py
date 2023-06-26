@@ -44,7 +44,7 @@ def train(g, node_batches, model, labels, train_mask, val_mask=[], test_mask=[],
     #optimizer = torch.optim.Adam(model.parameters(), lr=init_lr,weight_decay=0.0001)
     optimizer = AdamP(model.parameters(), lr=1e-3)
 
-    # Wrapper optimizer to
+    # Wrapper optimizer mantaining fast weights and slow weights updated every k steps
     optimizer = Lookahead(optimizer, k=5, alpha=0.5)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=15, verbose=True)
 
