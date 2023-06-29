@@ -1,4 +1,10 @@
-*.csv
 *.bin
 *.pyc
+
+New_data/duke_vital_model_imputed.csv
+New_data/unupsampled_data_test.csv
+New_data/upsampled_data_g.csv
+New_data/upsampled_data_Gabrielle_V2.csv
+New_data/upsampled_data_train.csv
+New_data/upsampled_data.csv
 

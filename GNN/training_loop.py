@@ -18,12 +18,11 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.ensemble import RandomForestClassifier
 from imblearn.over_sampling import SMOTE
 from xgboost import XGBClassifier
-from madgrad import MADGRAD
-#from diffdist.functional import diffgrad
-from adamp import AdamP
+
+
 
 # Look into optimal ESP 
-def train(g, node_batches, model, labels, train_mask, val_mask=[], test_mask=[], validate=True, test=False, init_lr=0.01, stoch=True, num_batches=20, early_stopping=True, early_stopping_patience=10, early_stopping_warmup=0, max_epochs=4950):
+def train(g, node_batches, model, labels, train_mask, val_mask=[], test_mask=[], validate=True, test=False, init_lr=0.01, stoch=True, num_batches=20, early_stopping=True, early_stopping_patience=10, early_stopping_warmup=0, max_epochs=4950, lamb_beta1=0.9, lamb_beta2=0.999, lamb_eps=1e-6, lamb_wd=0.01, lookahead_k=5, lookahead_alpha=0.5):
     # ensure that validation and/or test masks contain at least 1 node if validation and/or testing is enabled
     if test and len(test_mask) == 0:
         print("test_mask must contain at least 1 node if testing is enabled")
@@ -42,10 +41,17 @@ def train(g, node_batches, model, labels, train_mask, val_mask=[], test_mask=[],
     
     # create optimizer and scheduler
     #optimizer = torch.optim.Adam(model.parameters(), lr=init_lr,weight_decay=0.0001)
-    optimizer = AdamP(model.parameters(), lr=1e-3)
+    optimizer = optim.Lamb(
+        model.parameters(),
+        lr=init_lr,
+        betas=(lamb_beta1, lamb_beta2),
+        eps=lamb_eps,
+        weight_decay=lamb_wd
+    )
 
     # Wrapper optimizer mantaining fast weights and slow weights updated every k steps
-    optimizer = Lookahead(optimizer, k=5, alpha=0.5)
+    optimizer = Lookahead(optimizer, k=lookahead_k, alpha=lookahead_alpha)
+    # Where should this be used?
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=15, verbose=True)
 
     # set best scores
@@ -93,7 +99,6 @@ def train(g, node_batches, model, labels, train_mask, val_mask=[], test_mask=[],
         loss.backward()
         # scheduler.step(F.cross_entropy(logits[train_mask], labels[train_mask], weight=class_weights_weighted))
         optimizer.step()
-
 
         # Compute accuracy on entire training/validation/test
         train_loss = loss_function(logits[train_mask].squeeze().float(), labels[train_mask].squeeze().float())
@@ -162,3 +167,7 @@ def train(g, node_batches, model, labels, train_mask, val_mask=[], test_mask=[],
                     ), end=""
                 )
             print("")
+
+
+
+    return best_val_acc
