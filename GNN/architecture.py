@@ -9,8 +9,9 @@ import dgl.data
 import dgl.function as fn
 import numpy as np
 
+
 class GCNLAYER(nn.Module):
-    def __init__(self, node_dims, msg_dim, output_dims):
+    def __init__(self, node_dims, msg_dim, output_dims,dropout_rate):
         super(GCNLAYER, self).__init__()
 
         # create weights for message generation
@@ -28,7 +29,7 @@ class GCNLAYER(nn.Module):
         self.W_att_3 = nn.Linear(2 * node_dims, 1)
 
         # create dropout layer 
-        self.dropout = nn.Dropout(0.2)
+        self.dropout = nn.Dropout(dropout_rate)
 
         # layer normalization across feature dimension
         self.layer_norm = nn.LayerNorm(node_dims)
@@ -140,11 +141,11 @@ class AvgPoolingLayer(nn.Module):
 
 # define model
 class GCN(nn.Module):
-    def __init__(self, in_feats, msg_dims, h_feats, num_classes=1):
+    def __init__(self, in_feats, msg_dims, h_feats, dropout_rate, num_classes=1):
         super(GCN, self).__init__()
         # create graph layers
-        self.conv_1 = GCNLAYER(in_feats, msg_dims, h_feats)
-        self.conv_2 = GCNLAYER(h_feats, msg_dims, h_feats)
+        self.conv_1 = GCNLAYER(in_feats, msg_dims, h_feats,dropout_rate)
+        self.conv_2 = GCNLAYER(h_feats, msg_dims, h_feats,dropout_rate)
 
         # create avg_pool layer
         self.avg_pool = AvgPoolingLayer()
